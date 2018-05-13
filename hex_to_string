@@ -1,0 +1,55 @@
+const std::string hex_to_string(const std::string &str)
+{
+    size_t iSize = str.size();
+
+    std::string strTemp;
+    for(size_t i = 0; i < iSize; i += 2)
+    {
+        char c = (char)strtol(str.substr(i, 2).c_str(), NULL, 16);
+        strTemp.push_back(c);
+    }
+
+    return strTemp;
+}
+
+unsigned char hexval(unsigned char c)
+{
+    if('0' <= c && c <= '9')
+    {
+        return c - '0';
+    }
+    else if('a' <= c && c <= 'f')
+    {
+        return c - 'a' + 10;
+    }
+    else if('A' <= c && c <= 'F')
+    {
+        return c - 'A' + 10;
+    }
+    else
+    {
+        cout << "illegal hex character" << endl;
+        abort();
+    }
+}
+
+
+std::string hex_to_string_1(const std::string &str)
+{
+    size_t iLength = str.size();
+    if(0 != iLength % 2)
+    {
+        cout << "hex string format err" << endl;
+        return "";
+    }
+
+    std::string strTemp;
+    strTemp.reserve(iLength / 2);
+    for(size_t i = 0; i < iLength; i += 2)
+    {
+        char c = (char)(hexval(str[i]) << 4) + hexval(str[i + 1]);
+        strTemp.push_back(c);
+    }
+
+    return strTemp;
+}
