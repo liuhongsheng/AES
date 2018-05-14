@@ -1,0 +1,244 @@
+#include <openssl/aes.h>
+#include <iostream>
+#include <string>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <vector>
+
+using namespace std;
+
+static const unsigned int cAesKeySize = 16;
+
+
+string string_to_hex(const string &str)
+{
+    size_t iLength = str.size();
+    char *pOut = (char*)malloc(2 * iLength + 1);
+    if(NULL == pOut)
+    {
+        return "";
+    }
+
+    for (unsigned i = 0; i < iLength; i++)
+    {
+        sprintf(pOut + i * 2, "%02x", (unsigned char)(str[i]));
+    }
+    pOut[2 * iLength] = '\0';
+
+    std::string strTemp(pOut);
+    if(NULL != pOut) free(pOut);
+    return strTemp;
+}
+
+unsigned char hexval(unsigned char c)
+{
+    if('0' <= c && c <= '9')
+        return c - '0';
+    else if('a' <= c && c <= 'f')
+        return c - 'a' + 10;
+    else if('A' <= c && c <= 'F')
+        return c - 'A' + 10;
+    else
+    {
+        abort();
+    }
+}
+
+string hex_to_string(const string &str)
+{
+    size_t iLength = str.size();
+    if(0 != iLength % 2)
+    {
+        return "";
+    }
+
+    std::string strTemp;
+    for(size_t i = 0; i < iLength; i += 2)
+    {
+        char c = (char)(hexval(str[i]) << 4) + hexval(str[i + 1]);
+        strTemp.push_back(c);
+    }
+
+    return strTemp;
+}
+
+int AES_ECBEncrypt(const char* sSource, const uint32_t iSize, const char* sKey,  uint32_t iKeySize, std::string* poResult)
+{
+    if ( !sSource || !sKey || !poResult || iSize <= 0)
+    {
+        return -1;
+    }
+
+    cout << "sSource : " << sSource << endl;
+    cout << "iSize   : " << iSize << endl;
+    cout << "sKey    : " << sKey << endl;
+    cout << "iKeySize: " << iKeySize << endl;
+
+    if(16 != iKeySize && 24 != iKeySize && 32 != iKeySize)
+    {
+        cout << "key size if out of rules" << endl;
+        return -2;
+    }
+
+    poResult->clear();
+
+    //1.0 set the key
+    AES_KEY aesKey;
+    unsigned char userkey[16] = {0};
+    memcpy(userkey, sKey, iKeySize);
+    int iRet = AES_set_encrypt_key(userkey, iKeySize * 8, &aesKey);
+    if(0 != iRet)
+    {
+        cout << "set key err, iRet: " << iRet << endl;
+        return -3;
+    }
+
+    //cout << "iRet: " << iRet << endl;
+
+    //2.0 padding
+    int padding = AES_BLOCK_SIZE - (iSize % AES_BLOCK_SIZE);
+    unsigned char * tmp = (unsigned char*)malloc(iSize + padding);
+    if(NULL == tmp)
+    {
+        return -4;
+    }
+
+    memcpy(tmp, sSource, iSize);
+    memset(tmp + iSize, padding, padding);
+
+    //3.0 encrypt
+    int iOutLen = iSize + padding;
+    unsigned char * out = (unsigned char*)malloc(iOutLen);
+    if(NULL == out)
+    {
+        free(tmp);
+        return -5;
+    }
+
+    for (int i=0; i< iOutLen / AES_BLOCK_SIZE; ++i)
+    {
+        AES_ecb_encrypt(tmp + i*AES_BLOCK_SIZE, out + i*AES_BLOCK_SIZE, &aesKey, AES_ENCRYPT);
+    }
+
+    poResult->append((char *)out , iOutLen);
+
+    return 0;
+}
+
+int COpensslAES::AES_ECBDecrypt( const char * sSource, const uint32_t iSize,
+        const char * sKey, uint32_t iKeySize, std::string * poResult )
+{
+    if ( !sSource || !sKey || iSize < cAesKeySize || iSize % cAesKeySize != 0 || !poResult)
+    {
+        cout << "AES_CBCDecrypt" << "|AES_CBCDecrypt:invalid argument,isize["<<iSize<<"]"<<endl;
+        return -1;
+    }
+
+    poResult->clear();
+
+    if(16 != iKeySize && 24 != iKeySize && 32 != iKeySize)
+    {
+        cout << "key size illegal, key size: " << iKeySize << endl;
+        return -2;
+    }
+
+    //1.0 set aes key
+    AES_KEY aesKey;
+    unsigned char key[cAesKeySize] = { 0 };
+    memcpy(key, sKey, iKeySize);
+    AES_set_decrypt_key(key, iKeySize * 8, &aesKey);
+
+    //2.0 decrypt
+    unsigned char * out = (unsigned char*)malloc(iSize);
+    if(NULL == out)
+    {
+        cout << "AES_CBCDecrypt" << "|malloc failed"<<endl;
+        return -3;
+    }
+
+    memset(out, 0, iSize);
+    for (uint32_t i=0; i< iSize/16; ++i)
+    {
+        AES_ecb_encrypt((unsigned char *)sSource + i*16, out + i*16, &aesKey, AES_DECRYPT);
+    }
+    if (iSize < out[iSize-1])
+    {
+        return -4;
+    }
+
+    //3.0 throw padding
+    poResult->append((char *)out , iSize - out[iSize-1]);
+    if(NULL != out)
+    {
+        free(out);
+    }
+
+    return 0;
+}
+
+
+void test_01()
+{
+    std::string strkey = "4EF567B5DC24E9FE";
+
+    // 测试数据1
+    std::string strP_0 ="440507199607100011"; //18 位
+    std::string strOut;
+    AES_ECBEncrypt(strP_0.c_str(), strP_0.size(), strkey.c_str(), strkey.size(), &strOut);
+    std::string strCiphert = string_to_hex(strOut);
+
+    cout << "plaintext      : " << strP_0 << endl;
+    cout << "plaintext size : " << strP_0.size() << endl;
+    cout << "ciphertext     : " << strCiphert << endl;
+    cout << "ciphertext size: " << strCiphert.size() << endl;
+
+    cout << "==================================================================" << endl;
+
+    strOut.clear();
+    strCiphert.clear();
+    strP_0 ="440507199607100011123456789"; //27 位
+    AES_ECBEncrypt(strP_0.c_str(), strP_0.size(), strkey.c_str(), strkey.size(), &strOut);
+    strCiphert = string_to_hex(strOut);
+
+    cout << "plaintext      : " << strP_0 << endl;
+    cout << "plaintext size : " << strP_0.size() << endl;
+    cout << "ciphertext     : " << strCiphert << endl;
+    cout << "ciphertext size: " << strCiphert.size() << endl;
+
+    cout << "==================================================================" << endl;
+
+    strOut.clear();
+    strCiphert.clear();
+    strP_0 ="44050719960710001112345678912345"; //32 位
+    AES_ECBEncrypt(strP_0.c_str(), strP_0.size(), strkey.c_str(), strkey.size(), &strOut);
+    strCiphert = string_to_hex(strOut);
+
+    cout << "plaintext      : " << strP_0 << endl;
+    cout << "plaintext size : " << strP_0.size() << endl;
+    cout << "ciphertext     : " << strCiphert << endl;
+    cout << "ciphertext size: " << strCiphert.size() << endl;
+
+    cout << "==================================================================" << endl;
+
+    strOut.clear();
+    strCiphert.clear();
+    strP_0 ="440507199607100011123456789123456789"; //36 位
+    AES_ECBEncrypt(strP_0.c_str(), strP_0.size(), strkey.c_str(), strkey.size(), &strOut);
+    strCiphert = string_to_hex(strOut);
+
+    cout << "plaintext      : " << strP_0 << endl;
+    cout << "plaintext size : " << strP_0.size() << endl;
+    cout << "ciphertext     : " << strCiphert << endl;
+    cout << "ciphertext size: " << strCiphert.size() << endl;
+}
+
+int main(int argc, char *argv[])
+{
+
+    test_01();
+
+    return 0;
+}
